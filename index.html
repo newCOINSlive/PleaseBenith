@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Our Private Universe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --primary-pink: #ff4d6d;
+            --dark-pink: #c9184a;
+            --curtain-red: #6e0000;
+            --gold: #ffd700;
+            --expo-easing: cubic-bezier(0.19, 1, 0.22, 1);
+        }
+
+        /* --- UI LOCKDOWN --- */
+        * {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        img { -webkit-user-drag: none; pointer-events: none; }
+
+        body, html {
+            margin: 0; padding: 0;
+            height: 100%; width: 100%;
+            font-family: 'Poppins', sans-serif;
+            background: #000;
+            overflow: hidden;
+        }
+
+        /* --- CURTAINS --- */
+        .curtain-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 9999; display: flex;
+        }
+        
+        .curtain-container.opened {
+            pointer-events: none;
+            visibility: hidden;
+            transition: visibility 0s 1.5s;
+        }
+
+        .curtain-half {
+            width: 51%; height: 100%; background: var(--curtain-red);
+            background-image: linear-gradient(90deg, rgba(0,0,0,0.5) 0%, transparent 15%, rgba(0,0,0,0.5) 100%);
+            transition: transform 1.5s var(--expo-easing);
+            box-shadow: inset 0 0 100px #000;
+        }
+        .curtain-container.opened .left-curtain { transform: translateX(-100%); }
+        .curtain-container.opened .right-curtain { transform: translateX(100%); }
+
+        .pull-string {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 10000; text-align: center; cursor: pointer;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        .curtain-container.opened .pull-string { opacity: 0; transform: translate(-50%, -80%); }
+
+        .tassel { font-size: 5rem; filter: drop-shadow(0 0 15px var(--gold)); animation: swing 3s infinite ease-in-out; display: block; }
+        @keyframes swing { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+
+        /* --- STAGE --- */
+        .stage {
+            width: 100%; height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            background: radial-gradient(circle at center, #3d0000 0%, #000 90%);
+            opacity: 0; transition: opacity 1.5s ease 0.5s;
+        }
+        .curtain-container.opened + .stage { opacity: 1; }
+
+        .envelope-wrapper {
+            position: relative; width: 280px; height: 190px; background: #f5ebe0;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.7); cursor: pointer;
+            transition: transform 1s var(--expo-easing), opacity 0.8s ease;
+        }
+
+        .wax-seal {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 70px; height: 70px; background: #9d0208; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--gold); font-size: 2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+        }
+
+        .full-letter-view {
+            position: absolute; width: 85%; max-width: 350px; background: #fffaf0;
+            padding: 30px; border-radius: 20px; opacity: 0;
+            transform: scale(0.8) translateY(30px);
+            transition: all 1s var(--expo-easing);
+            text-align: center; z-index: 100; pointer-events: none;
+        }
+
+        .body-revealed .full-letter-view { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+        .body-revealed .envelope-wrapper { opacity: 0; transform: scale(0.5); pointer-events: none; }
+
+        /* --- DREAM WORLD --- */
+        #dream-world {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(45deg, #ff4d6d, #800f2f);
+            opacity: 0; pointer-events: none; z-index: 200;
+            display: flex; flex-direction: column; align-items: center;
+            overflow-y: auto; padding: 40px 10px;
+            transition: opacity 1.5s ease;
+        }
+        .dream-active #dream-world { opacity: 1; pointer-events: auto; }
+
+        .glass-container {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 25px; padding: 25px; width: 85%;
+            margin-bottom: 30px; text-align: center; color: white;
+        }
+
+        .photo-gallery {
+            display: grid; grid-template-columns: repeat(2, 1fr);
+            gap: 12px; width: 100%; opacity: 0; transform: translateY(40px);
+            transition: opacity 2s ease, transform 2s ease;
+            padding-bottom: 60px;
+        }
+        .shaken .photo-gallery { opacity: 1; transform: translateY(0); }
+
+        .photo-card {
+            background: white; 
+            padding: 6px; 
+            padding-bottom: 12px;
+            filter: blur(20px) grayscale(100%);
+            transition: filter 2.5s var(--expo-easing), transform 0.5s;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        .shaken .photo-card { filter: blur(0) grayscale(0); }
+        
+        /* Smaller Image Style */
+        .photo-card img { 
+            width: 100%; 
+            aspect-ratio: 1/1; 
+            object-fit: cover; 
+            border-radius: 2px;
+        }
+
+        /* Caption Text Style */
+        .photo-caption {
+            font-family: 'Dancing Script', cursive;
+            color: #444;
+            font-size: 0.9rem;
+            margin-top: 8px;
+            display: block;
+        }
+
+        .shake-instruction { color: var(--gold); font-weight: bold; font-size: 1rem; margin-top: 15px; animation: glowPulse 2s infinite; cursor: pointer; }
+        @keyframes glowPulse { 0%, 100% { opacity: 1; text-shadow: 0 0 8px var(--gold); } 50% { opacity: 0.4; text-shadow: none; } }
+
+        .btn-valentine, .btn-dream {
+            background: var(--primary-pink); color: white; border: none;
+            padding: 15px 30px; border-radius: 50px; cursor: pointer;
+            font-weight: 600; margin-top: 15px;
+        }
+        #tapToWorld { display: none; background: var(--gold); color: #000; }
+    </style>
+</head>
+<body id="theBody">
+
+    <div class="curtain-container" id="curtainWrapper" onclick="handleCurtain()">
+        <div class="curtain-half left-curtain"></div>
+        <div class="pull-string">
+            <span class="tassel">⚜️</span>
+            <div style="color:var(--gold); font-family:'Dancing Script'; font-size: 2rem;">Tap to Enter</div>
+        </div>
+        <div class="curtain-half right-curtain"></div>
+    </div>
+
+    <div class="stage">
+        <div class="envelope-wrapper" onclick="handleEnvelope()">
+            <div class="wax-seal">💛</div>
+        </div>
+        <div class="full-letter-view">
+            <h2 style="font-family: 'Dancing Script'; font-size: 2.5rem; color: var(--dark-pink); margin:0;">Hi Baby,</h2>
+            <p>Every moment with you is a gift. Open the portal to see why.</p>
+            <button class="btn-valentine" onclick="celebrate()">I'm Ready</button>
+            <br>
+            <button class="btn-dream" id="tapToWorld" onclick="enterDreamWorld()">✨ Open the Portal ✨</button>
+        </div>
+    </div>
+
+    <div id="dream-world">
+        <div class="glass-container">
+            <h1 style="font-family:'Dancing Script'; font-size: 2.5rem; margin:0;">Our Moments</h1>
+            <p>Memories frozen in time...</p>
+            <div class="shake-instruction" id="revealTrigger">📳 SHAKE TO REVEAL 📳</div>
+        </div>
+
+        <div class="photo-gallery">
+            <div class="photo-card" style="--r: -2deg;"><img src="https://picsum.photos/250/250?random=1"><span class="photo-caption">Where we met</span></div>
+            <div class="photo-card" style="--r: 3deg;"><img src="https://picsum.photos/250/250?random=2"><span class="photo-caption">That one night</span></div>
+            <div class="photo-card" style="--r: -4deg;"><img src="https://picsum.photos/250/250?random=3"><span class="photo-caption">Our first date</span></div>
+            <div class="photo-card" style="--r: 2deg;"><img src="https://picsum.photos/250/250?random=4"><span class="photo-caption">Pure happiness</span></div>
+            <div class="photo-card" style="--r: -3deg;"><img src="https://picsum.photos/250/250?random=5"><span class="photo-caption">Sweetest laugh</span></div>
+            <div class="photo-card" style="--r: 4deg;"><img src="https://picsum.photos/250/250?random=6"><span class="photo-caption">Forever vibes</span></div>
+            <div class="photo-card" style="--r: -1deg;"><img src="https://picsum.photos/250/250?random=7"><span class="photo-caption">My favorite view</span></div>
+            <div class="photo-card" style="--r: 2deg;"><img src="https://picsum.photos/250/250?random=8"><span class="photo-caption">Love always</span></div>
+        </div>
+    </div>
+
+    <script>
+        let revealed = false;
+        function handleCurtain() { document.getElementById('curtainWrapper').classList.add('opened'); }
+        function handleEnvelope() { document.getElementById('theBody').classList.add('body-revealed'); }
+        function celebrate() {
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
+            document.getElementById('tapToWorld').style.display = 'inline-block';
+        }
+        function enterDreamWorld() {
+            document.getElementById('theBody').classList.add('dream-active');
+            if (!('ontouchstart' in window)) { document.getElementById('revealTrigger').innerHTML = "✨ CLICK TO REVEAL ✨"; }
+            requestShakePermission();
+        }
+        function revealPhotos() {
+            if (!revealed) {
+                document.getElementById('dream-world').classList.add('shaken');
+                confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+                revealed = true;
+            }
+        }
+        document.getElementById('revealTrigger').onclick = revealPhotos;
+        let shakeThreshold = 15; let lastX, lastY, lastZ;
+        function requestShakePermission() {
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission().then(state => { if (state === 'granted') window.addEventListener('devicemotion', detectShake); });
+            } else { window.addEventListener('devicemotion', detectShake); }
+        }
+        function detectShake(event) {
+            let acc = event.accelerationIncludingGravity;
+            if (!acc.x) return;
+            let diffX = Math.abs(acc.x - lastX);
+            if (diffX > shakeThreshold) revealPhotos();
+            lastX = acc.x;
+        }
+    </script>
+</body>
+</html>
