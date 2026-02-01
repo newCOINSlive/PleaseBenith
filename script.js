@@ -1,240 +1,186 @@
-/**
- * THE ULTIMATE VALENTINE ENGINE
- * Physics-based evasion, Thanos-snap disintegration, and Cinematic celebration.
- */
-
-const noBtn = document.getElementById('noBtn');
-const yesBtn = document.getElementById('yesBtn');
-const whisper = document.getElementById('whisperText');
 const canvas = document.getElementById('particleCanvas');
 const ctx = canvas.getContext('2d');
-const music = document.getElementById('bgMusic');
-const musicToggle = document.getElementById('musicToggle');
+const noBtn = document.getElementById('noBtn');
+const yesBtn = document.getElementById('yesBtn');
+const deathScreen = document.getElementById('death-screen');
+const victoryScreen = document.getElementById('victory-screen');
+const hpDisplay = document.getElementById('hp-hearts');
+const audioToggle = document.getElementById('audio-control');
 
-let particles = [];
-let confetti = [];
-let animationFrame;
-let mouseX = 0, mouseY = 0;
-let buttonX = 0, buttonY = 0;
-let velX = 0, velY = 0;
+let width, height, particles = [], mouse = { x: 0, y: 0 };
+let gameState = 'playing';
+let noState = { x: 0, y: 0, vx: 0, vy: 0 };
+let bossHP = 3;
+let audioCtx = null;
 
-// Resize handler
-window.addEventListener('resize', initCanvas);
-function initCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+function init() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    noState.x = width / 2 + 120;
+    noState.y = height / 2;
 }
-initCanvas();
 
-// Track Mouse/Touch
-window.addEventListener('mousemove', (e) => {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
-    applyYesMagnetism(e.clientX, e.clientY);
+window.addEventListener('resize', init);
+window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+
+// --- SOUNDS ---
+function playOof() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(80, t + 0.1);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.linearRampToValueAtTime(0, t + 0.1);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(t + 0.1);
+}
+
+function playDeath() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(100, t);
+    osc.frequency.linearRampToValueAtTime(20, t + 0.6);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.linearRampToValueAtTime(0, t + 0.6);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(t + 0.6);
+}
+
+function playVictory() {
+    if (!audioCtx) return;
+    const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+    notes.forEach((freq, i) => {
+        const t = audioCtx.currentTime + (i * 0.1);
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0.1, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(t); osc.stop(t + 0.5);
+    });
+}
+
+audioToggle.addEventListener('click', () => {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioToggle.innerText = "🎵 AUDIO ACTIVE";
 });
 
-window.addEventListener('touchmove', (e) => {
-    mouseX = e.touches[0].clientX;
-    mouseY = e.touches[0].clientY;
-});
-
-/**
- * 1. NO BUTTON PHYSICS (The Evasion)
- */
-let noRect = noBtn.getBoundingClientRect();
-buttonX = noRect.left + noRect.width / 2;
-buttonY = noRect.top + noRect.height / 2;
-
-function updateNoButton() {
-    if (!noBtn.parentElement) return;
-
-    const dx = mouseX - buttonX;
-    const dy = mouseY - buttonY;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    const triggerDist = 150;
-
-    if (distance < triggerDist) {
-        // Calculate angle away from cursor
-        const angle = Math.atan2(dy, dx);
-        const force = (triggerDist - distance) / triggerDist;
-        
-        // Push velocity with a bit of "chaos"
-        const speed = 15 * force;
-        velX -= Math.cos(angle) * speed + (Math.random() - 0.5) * 5;
-        velY -= Math.sin(angle) * speed + (Math.random() - 0.5) * 5;
-
-        // Add a wobble/rotation effect
-        const rotate = (Math.random() - 0.5) * 40;
-        const scale = 1 - (force * 0.3);
-        noBtn.style.transform = `translate(${velX}px, ${velY}px) rotate(${rotate}deg) scale(${scale})`;
+// --- PARTICLES (CONFETTI & HEARTS) ---
+class Particle {
+    constructor(x, y, type) {
+        this.x = x; this.y = y;
+        this.type = type;
+        this.vx = (Math.random() - 0.5) * 15;
+        this.vy = (Math.random() - 2) * 10;
+        this.life = 1.0;
+        this.color = type === 'heart' ? '#ff4d6d' : `hsl(${Math.random() * 360}, 100%, 70%)`;
+        this.size = Math.random() * 5 + 3;
     }
-
-    // Spring friction (slows it down)
-    velX *= 0.92;
-    velY *= 0.92;
-
-    // Boundary check
-    const bounds = 50;
-    if (buttonX + velX < bounds || buttonX + velX > window.innerWidth - bounds) velX *= -1;
-    if (buttonY + velY < bounds || buttonY + velY > window.innerHeight - bounds) velY *= -1;
-
-    buttonX += velX;
-    buttonY += velY;
-    
-    noBtn.style.left = `${buttonX - noRect.width / 2}px`;
-    noBtn.style.top = `${buttonY - noRect.height / 2}px`;
-    noBtn.style.position = 'fixed';
-
-    requestAnimationFrame(updateNoButton);
-}
-requestAnimationFrame(updateNoButton);
-
-/**
- * 2. YES BUTTON MAGNETISM
- */
-function applyYesMagnetism(mx, my) {
-    const rect = yesBtn.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dist = Math.sqrt((mx - cx)**2 + (my - cy)**2);
-
-    if (dist < 200) {
-        const pullX = (cx - mx) * 0.1;
-        const pullY = (cy - my) * 0.1;
-        yesBtn.style.transform = `translate(${-pullX}px, ${-pullY}px) scale(1.1)`;
-    } else {
-        yesBtn.style.transform = `translate(0,0) scale(1)`;
+    update() {
+        this.x += this.vx; this.y += this.vy;
+        this.vy += 0.2; // gravity
+        this.life -= 0.01;
     }
-}
-
-/**
- * 3. THE THANOS SNAP (Disintegration)
- */
-noBtn.addEventListener('click', () => {
-    noBtn.style.pointerEvents = 'none';
-    setTimeout(disintegrate, 200);
-});
-
-function disintegrate() {
-    const rect = noBtn.getBoundingClientRect();
-    const count = 60;
-    
-    for (let i = 0; i < count; i++) {
-        particles.push({
-            x: rect.left + Math.random() * rect.width,
-            y: rect.top + Math.random() * rect.height,
-            vx: (Math.random() - 0.5) * 4,
-            vy: (Math.random() - 1) * 4,
-            size: Math.random() * 4 + 2,
-            life: 1,
-            color: '#ff85a1'
-        });
-    }
-    
-    noBtn.style.transition = 'opacity 0.2s ease, filter 0.5s ease';
-    noBtn.style.opacity = '0';
-    noBtn.style.filter = 'blur(10px)';
-    
-    setTimeout(() => {
-        noBtn.remove();
-        whisper.style.opacity = '1';
-    }, 200);
-}
-
-/**
- * 4. CELEBRATION LOGIC
- */
-yesBtn.addEventListener('click', () => {
-    document.getElementById('questionSection').classList.add('hidden');
-    document.getElementById('celebrationSection').classList.remove('hidden');
-    document.querySelector('.gradient-bg').classList.add('celebrate');
-    
-    triggerConfetti();
-    typeMessage();
-    if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
-});
-
-function triggerConfetti() {
-    const colors = ['#ff4d6d', '#ff85a1', '#fff', '#ffb3c1'];
-    for (let i = 0; i < 150; i++) {
-        confetti.push({
-            x: window.innerWidth / 2,
-            y: window.innerHeight + 10,
-            vx: (Math.random() - 0.5) * 15,
-            vy: -Math.random() * 20 - 10,
-            size: Math.random() * 10 + 5,
-            color: colors[Math.floor(Math.random() * colors.length)],
-            rotation: Math.random() * 360,
-            type: Math.random() > 0.5 ? 'heart' : 'circle'
-        });
+    draw() {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        if (this.type === 'heart') {
+            const s = this.size / 2;
+            ctx.fillRect(this.x, this.y, s, s);
+            ctx.fillRect(this.x - s, this.y - s, s, s);
+            ctx.fillRect(this.x + s, this.y - s, s, s);
+        } else {
+            ctx.fillRect(this.x, this.y, this.size, this.size);
+        }
     }
 }
 
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+// --- GAME LOOP ---
+function loop() {
+    ctx.clearRect(0, 0, width, height);
     
-    // Update Snap Particles
+    if (gameState === 'playing' && bossHP > 0) {
+        const dx = mouse.x - noState.x;
+        const dy = mouse.y - noState.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 200) {
+            const angle = Math.atan2(dy, dx);
+            noState.vx = -Math.cos(angle) * 25;
+            noState.vy = -Math.sin(angle) * 25;
+            noBtn.classList.add('shake');
+        } else {
+            noBtn.classList.remove('shake');
+        }
+
+        noState.vx *= 0.92; noState.vy *= 0.92;
+        noState.x += noState.vx; noState.y += noState.vy;
+
+        // Boundary Lock
+        const p = 80;
+        if (noState.x < p) { noState.x = p; noState.vx *= -1; }
+        if (noState.x > width - p) { noState.x = width - p; noState.vx *= -1; }
+        if (noState.y < p) { noState.y = p; noState.vy *= -1; }
+        if (noState.y > height - p) { noState.y = height - p; noState.vy *= -1; }
+
+        noBtn.style.left = `${noState.x}px`;
+        noBtn.style.top = `${noState.y}px`;
+        noBtn.style.transform = `translate(-50%, -50%)`;
+    }
+
     particles.forEach((p, i) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life -= 0.01;
-        ctx.fillStyle = `rgba(255, 133, 161, ${p.life})`;
-        ctx.fillRect(p.x, p.y, p.size, p.size);
+        p.update(); p.draw();
         if (p.life <= 0) particles.splice(i, 1);
     });
 
-    // Update Confetti
-    confetti.forEach((c, i) => {
-        c.x += c.vx;
-        c.y += c.vy;
-        c.vy += 0.2; // Gravity
-        c.rotation += 5;
-        
-        ctx.save();
-        ctx.translate(c.x, c.y);
-        ctx.rotate((c.rotation * Math.PI) / 180);
-        ctx.fillStyle = c.color;
-        
-        if (c.type === 'heart') {
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.bezierCurveTo(-c.size, -c.size, -c.size*1.5, c.size/2, 0, c.size);
-            ctx.bezierCurveTo(c.size*1.5, c.size/2, c.size, -c.size, 0, 0);
-            ctx.fill();
+    requestAnimationFrame(loop);
+}
+
+// --- EVENT HANDLERS ---
+noBtn.addEventListener('click', () => {
+    if (gameState !== 'playing' || bossHP <= 0) return;
+    bossHP--;
+    hpDisplay.innerText = "❤️".repeat(bossHP) + "🖤".repeat(3 - bossHP);
+    gameState = 'paused';
+    deathScreen.classList.remove('hidden');
+    playOof();
+
+    setTimeout(() => {
+        if (bossHP > 0) {
+            deathScreen.classList.add('hidden');
+            gameState = 'playing';
+            noState.x = Math.random() * (width - 200) + 100;
+            noState.y = Math.random() * (height - 200) + 100;
         } else {
-            ctx.fillRect(-c.size/2, -c.size/2, c.size, c.size);
+            deathScreen.classList.add('hidden');
+            noBtn.remove();
+            yesBtn.classList.add('enlarged');
+            playDeath();
+            document.getElementById('boss-name').innerText = "ENTITY_DELETED";
+            gameState = 'playing';
         }
-        ctx.restore();
-        
-        if (c.y > canvas.height + 50) confetti.splice(i, 1);
-    });
+    }, 1000);
+});
 
-    requestAnimationFrame(draw);
-}
-draw();
-
-function typeMessage() {
-    const text = "I love you man...Thank you for being you. ❤️";
-    const container = document.getElementById('romanticMessage');
-    let i = 0;
-    
-    function next() {
-        if (i < text.length) {
-            container.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(next, 50);
-        }
-    }
-    setTimeout(next, 1000);
-}
-
-// Music Logic
-musicToggle.addEventListener('click', () => {
-    if (music.paused) {
-        music.play();
-        musicToggle.innerHTML = "<span>I</span>"; // Pause icon
-    } else {
-        music.pause();
-        musicToggle.innerHTML = "<span>♪</span>";
+yesBtn.addEventListener('click', () => {
+    gameState = 'winning';
+    victoryScreen.classList.remove('hidden');
+    playVictory();
+    // Massive Confetti Fall
+    for(let i=0; i<300; i++) {
+        setTimeout(() => {
+            particles.push(new Particle(Math.random() * width, -20, Math.random() > 0.3 ? 'confetti' : 'heart'));
+        }, i * 5);
     }
 });
+
+init();
+loop();
